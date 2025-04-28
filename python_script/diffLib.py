@@ -34,9 +34,6 @@ def get_html(url):
     except requests.exceptions.RequestException as e:
         return f"Error: {e}"
 
-# def get_html(url):
-#     response = requests.get(url)
-#     return response.text if response.status_code == 200 else None
 
 def compare_html(html1, html2):
     d = difflib.unified_diff(html1.splitlines(), html2.splitlines(), lineterm='')

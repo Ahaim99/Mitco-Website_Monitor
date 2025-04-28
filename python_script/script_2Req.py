@@ -1,6 +1,11 @@
 import requests
 from bs4 import BeautifulSoup
 
+# Tutorial Link
+TutorialLink = "https://hackernoon.com/getting-the-source-of-a-website-with-pythons-requests-library"
+
+
+# Return the beautify HTML of a website
 def get_clean_html(url):
     response = requests.get(url)
     if response.status_code == 200:
@@ -11,6 +16,7 @@ def get_clean_html(url):
         return soup.prettify()
     return None
 
+# return True and False if the HTML is same or not
 def compare_html(html1, html2):
     return html1 == html2
 

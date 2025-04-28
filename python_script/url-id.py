@@ -53,7 +53,6 @@ def extract_unique_content(html, element_id):
     unique_content = unique_div.decode_contents() if unique_div else None
     return unique_content
 
-
 def insert_into_text_match(cursor, url, text_match):
     now = datetime.now()
 
