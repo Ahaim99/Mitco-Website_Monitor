@@ -1,9 +1,8 @@
 import requests
 import difflib
 import mysql.connector
-from bs4 import BeautifulSoup
 from datetime import datetime
-
+from bs4 import BeautifulSoup
 
 # Database Connection
 mydb = mysql.connector.connect(
@@ -97,7 +96,7 @@ if not url.startswith(("http://", "https://")):
 # Fetch HTML 5 times
 fetches = [get_html(url) for _ in range(5)]
 
-# print(fetches)
+print(get_html(url))
 
 
 # Compare all fetches
