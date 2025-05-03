@@ -1,10 +1,8 @@
 import requests
 import difflib
 import mysql.connector
-from bs4 import BeautifulSoup
 from datetime import datetime
-import hashlib
-
+from bs4 import BeautifulSoup
 
 # Database Connection
 mydb = mysql.connector.connect(
@@ -14,95 +12,59 @@ mydb = mysql.connector.connect(
     database="website_monitoring"
 )
 
-# Function to fetch HTML content
-def get_html(url):
+# Fetch HTML
+def fetch_html(url):
     try:
-        response = requests.get(url)
-        return response.text if response.status_code == 200 else None
-    except requests.exceptions.RequestException as e:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.text
+    except requests.RequestException as e:
         print(f"Error fetching {url}: {e}")
         return None
 
-# Function to compare multiple HTML contents
-def compare_multiple_html(*htmls):
-    differences = []
-    for i in range(len(htmls)):
-        for j in range(i + 1, len(htmls)):
-            if htmls[i] is None or htmls[j] is None:
-                continue
-            diff = difflib.unified_diff(
-                htmls[i].splitlines(),
-                htmls[j].splitlines(),
-                lineterm='',
-                fromfile=f"Fetch {i+1}",
-                tofile=f"Fetch {j+1}"
-            )
-            diff_text = "\n".join(diff)
-            if diff_text:
-                differences.append(f"Difference between Fetch {i+1} and Fetch {j+1}:\n{diff_text}\n")
-    return differences if differences else ["All fetched versions are identical."]
+# Extract meaningful blocks (div, nav, section, etc.) with visible content
+def extract_meaningful_blocks(html_text):
+    soup = BeautifulSoup(html_text, "html.parser")
+    candidates = []
 
+    # Tags of interest
+    for tag in soup.find_all(["div", "section", "nav", "footer", "ul"]):
+        text = tag.get_text(strip=True)
+        html = tag.prettify()
 
+        # Heuristic: meaningful block = visible, not empty, decent length
+        if len(text) > 50 and len(html) > 200:
+            candidates.append(html)
 
-# def extract_unique_content(html, element_id):
-#     if not html:
-#         return None
+    return candidates
 
-#     soup = BeautifulSoup(html, "html.parser")
-
-#     # Dynamically find element by ID
-#     unique_div = soup.find(id=element_id)
-
-#     unique_content = unique_div.decode_contents() if unique_div else None
-#     return unique_content
-
-
-
-
-# # Function to extract unique content using BeautifulSoup
-# def extract_unique_content(html):
-#     soup = BeautifulSoup(html, "html.parser")
-    
-
-#     # footer = soup.title.string if soup.find(attrs={'id':'TP_footer'}) else None
-    
-#     # Example: Extract a specific <div> with a unique ID or class
-#     unique_div = soup.find("div", {"id": "footermenu"})  # Replace "unique-id" with the actual ID or class
-#     unique_content = unique_div.get_text() if unique_div else None
-    
-#     return unique_content
-
-
-
-def extract_unique_content(html, marker_start=None, marker_end=None):
-    if not html:
+# Find most stable block across versions
+def find_stable_html_block(html_versions):
+    all_candidates = [extract_meaningful_blocks(html) for html in html_versions]
+    if not all(all_candidates):
         return None
 
-    # Narrow down by string markers (optional)
-    if marker_start and marker_end and marker_start in html and marker_end in html:
-        start = html.index(marker_start) + len(marker_start)
-        end = html.index(marker_end, start)
-        html_slice = html[start:end]
-    else:
-        html_slice = html
+    min_len = min(len(c) for c in all_candidates)
+    stability_scores = []
 
-    # Normalize whitespaces
-    normalized = " ".join(html_slice.split())
+    for i in range(min_len):
+        versions = [candidates[i] for candidates in all_candidates]
+        diffs = [difflib.SequenceMatcher(None, versions[0], v).ratio() for v in versions[1:]]
+        avg_score = sum(diffs) / len(diffs)
+        stability_scores.append((avg_score, i, versions[0]))
 
-    # Return SHA256 hash as a "fingerprint"
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    stability_scores.sort(reverse=True)
+    best_score, best_index, best_html = stability_scores[0]
+    print(f"Most stable semantic block at index {best_index}, score: {best_score:.3f}")
+    return best_html if best_score > 0.90 else None
 
-
-
+# Insert into DB
 def insert_into_text_match(cursor, url, text_match):
     now = datetime.now()
-
-    # Check if URL exists
     cursor.execute("SELECT COUNT(*) FROM monitored_sites WHERE url = %s", (url,))
     (count,) = cursor.fetchone()
 
     if count > 0:
-        # Update existing
         query = """
         UPDATE monitored_sites
         SET text_match = %s,
@@ -112,7 +74,6 @@ def insert_into_text_match(cursor, url, text_match):
         """
         cursor.execute(query, (text_match, now, now, url))
     else:
-        # Insert new
         query = """
         INSERT INTO monitored_sites (url, text_match, last_check_datetime, created_at, updated_at)
         VALUES (%s, %s, %s, %s, %s)
@@ -121,24 +82,23 @@ def insert_into_text_match(cursor, url, text_match):
 
     mydb.commit()
 
-# Take input and save in URL
-url = input("Type URL:").replace(" ", "")
-
+# MAIN
+url = input("Enter URL:").strip()
 if not url.startswith(("http://", "https://")):
     url = "https://" + url
 
-# Fetch HTML 5 times
-fetches = [get_html(url) for _ in range(5)]
+fetches = [fetch_html(url) for _ in range(5)]
+fetches = [f for f in fetches if f]
 
-# Compare all fetches
-differences = compare_multiple_html(*fetches)
-
-# for diff in differences: # just For testing
-#     print(diff)
-
-if fetches[0]:
-    content = extract_unique_content(fetches[0])
-    if content:
-        insert_into_text_match(mydb.cursor(), url, content)
+if len(fetches) < 2:
+    print("Not enough successful fetches.")
+else:
+    stable_html = find_stable_html_block(fetches)
+    if stable_html:
+        print("\n=== Extracted Stable HTML ===\n")
+        print(stable_html)
+        insert_into_text_match(mydb.cursor(), url, stable_html)
+    else:
+        print("No stable, visible content block found.")
 
 mydb.close()

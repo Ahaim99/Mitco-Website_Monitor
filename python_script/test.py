@@ -64,23 +64,53 @@ def decode_and_pretty_print(html_bytes):
         print(f"Decoding error: {e}")
         return None
 
+# Insert or update text match in the database
+def insert_into_text_match(cursor, url, text_match):
+    now = datetime.now()
+
+    # Check if URL exists
+    cursor.execute("SELECT COUNT(*) FROM monitored_sites WHERE url = %s", (url,))
+    (count,) = cursor.fetchone()
+
+    if count > 0:
+        # Update existing
+        query = """
+        UPDATE monitored_sites
+        SET text_match = %s,
+            last_check_datetime = %s,
+            updated_at = %s
+        WHERE url = %s
+        """
+        cursor.execute(query, (text_match, now, now, url))
+    else:
+        # Insert new
+        query = """
+        INSERT INTO monitored_sites (url, text_match, last_check_datetime, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        cursor.execute(query, (url, text_match, now, now, now))
+
+    mydb.commit()
+
 # MAIN
 url = input("Enter URL:").replace(" ", "")
 if not url.startswith(("http://", "https://")):
     url = "https://" + url
 
-
 # Fetch site multiple times
 fetches = [fetch_html(url) for _ in range(5)]
 fetches = [f for f in fetches if f]
 
-print(fetches)
 
 if len(fetches) < 2:
     print("Not enough successful fetches.")
 else:
     stable_footer_bytes = find_stable_footer_window(fetches)
     if stable_footer_bytes:
-        decode_and_pretty_print(stable_footer_bytes)
+        content = decode_and_pretty_print(stable_footer_bytes)
+        insert_into_text_match(mydb.cursor(), url, content.prettify() if content else "")
     else:
         print("No stable footer-like region found.")
+
+
+mydb.close()
