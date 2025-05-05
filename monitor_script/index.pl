@@ -54,7 +54,7 @@ foreach (@$ref) {
         }
     }
 
-    # Fetch webpage content
+    # Fetch webpage content (HTMl)
     my $response = $ua->request($req);
 
     # Check for success and handle response
@@ -67,35 +67,38 @@ foreach (@$ref) {
         my $normalized_text_match = $text_match;
         $normalized_text_match =~ s/[\n\r\s]//g;
 
-        # Check if the normalized text_match exists in the normalized response
-        if ($normalized_response =~ /\Q$normalized_text_match\E/) {
-            # For Nagios Alert
-            if ($isFirstWorking) {
-                $okResponse .= $url;
-                $isFirstWorking = 0;
-            } else {
-                $okResponse .= ", " . $url;
-            }
+        print "normalized_response: $normalized_response\n\n\n";
+        print "normalized_text_match: $normalized_text_match\n";
 
-            # Update database for successful match
-            my $statement = "UPDATE monitored_sites SET status = 'active', last_result = 'Match found', last_check_datetime = NOW(), response_time = ? WHERE ms_id = ?";
-            my $rv = $Conn->do($statement, undef, $response->header('Client-Response-Time') || 0, $ms_id);
-            $DBI::err && die $DBI::errstr;
-        } else {
-            # For Nagios Alert
-            $status++;
-            if ($isFirstError) {
-                $cResponse .= $url;
-                $isFirstError = 0;
-            } else {
-                $cResponse .= ", " . $url;
-            }
+        # # Check if the normalized text_match exists in the normalized response
+        # if ($normalized_response =~ /\Q$normalized_text_match\E/) {
+        #     # For Nagios Alert
+        #     if ($isFirstWorking) {
+        #         $okResponse .= $url;
+        #         $isFirstWorking = 0;
+        #     } else {
+        #         $okResponse .= ", " . $url;
+        #     }
 
-            # Update database for no match
-            my $statement = "UPDATE monitored_sites SET status = 'inactive', last_result = 'Match not found', last_check_datetime = NOW(), response_time = ? WHERE ms_id = ?";
-            my $rv = $Conn->do($statement, undef, $response->header('Client-Response-Time') || 0, $ms_id);
-            $DBI::err && die $DBI::errstr;
-        }
+        #     # Update database for successful match
+        #     my $statement = "UPDATE monitored_sites SET status = 'active', last_result = 'Match found', last_check_datetime = NOW(), response_time = ? WHERE ms_id = ?";
+        #     my $rv = $Conn->do($statement, undef, $response->header('Client-Response-Time') || 0, $ms_id);
+        #     $DBI::err && die $DBI::errstr;
+        # } else {
+        #     # For Nagios Alert
+        #     $status++;
+        #     if ($isFirstError) {
+        #         $cResponse .= $url;
+        #         $isFirstError = 0;
+        #     } else {
+        #         $cResponse .= ", " . $url;
+        #     }
+
+        #     # Update database for no match
+        #     my $statement = "UPDATE monitored_sites SET status = 'inactive', last_result = 'Match not found', last_check_datetime = NOW(), response_time = ? WHERE ms_id = ?";
+        #     my $rv = $Conn->do($statement, undef, $response->header('Client-Response-Time') || 0, $ms_id);
+        #     $DBI::err && die $DBI::errstr;
+        # }
     } else {
         # For Nagios Alert (Error URLs)
         $status++;

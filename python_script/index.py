@@ -4,6 +4,7 @@ import mysql.connector
 from datetime import datetime
 from bs4 import BeautifulSoup
 import re
+from urllib.parse import urlparse, urlunparse
 
 # Database Connection
 mydb = mysql.connector.connect(
@@ -12,6 +13,20 @@ mydb = mysql.connector.connect(
     password="alihamza",
     database="website_monitoring"
 )
+
+# Normalize URL
+def normalize_url(url):
+    url = url.strip()
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    parsed = urlparse(url)
+    # Normalize netloc and path
+    scheme = parsed.scheme
+    netloc = parsed.netloc
+    path = parsed.path.rstrip('/')  # remove trailing slash
+    normalized_url = urlunparse((scheme, netloc, path, '', '', ''))
+    return normalized_url
 
 # Fetch HTML
 def fetch_html(url):
@@ -84,71 +99,6 @@ def insert_into_text_match(cursor, url, text_match):
 
     mydb.commit()
 
-
-# def clean_html(html):
-#     # Remove all whitespace characters including line breaks, tabs, etc.
-#     return re.sub(r'\s+', '', html)
-
-# def clean_html(html):
-#     soup = BeautifulSoup(html, "html.parser")
-
-#     # Clean text nodes: strip spaces and newlines inside visible content
-#     for element in soup.find_all(text=True):
-#         cleaned = ' '.join(element.split())  # collapse multiple spaces/newlines into single space
-#         element.replace_with(cleaned)
-
-#     return str(soup)
-
-
-# def clean_html(html):
-#     # Preserve tags exactly as-is, only clean between them
-#     # Collapse multiple spaces and line breaks between tags
-#     html = re.sub(r'>\s+<', '><', html)  # remove whitespace between tags
-
-#     # Clean text content between tags: replace multiple spaces/newlines with a single space
-#     def clean_text_between_tags(match):
-#         text = match.group(1)
-#         cleaned = ' '.join(text.split())  # collapse internal whitespace
-#         return f'>{cleaned}<'
-
-#     html = re.sub(r'>([^<]+)<', clean_text_between_tags, html)
-#     return html
-
-
-# def clean_html(html):
-#     # This will hold the final cleaned HTML
-#     result = []
-
-#     # Pattern to split HTML into tags and text nodes
-#     parts = re.split(r'(<[^>]+>)', html)
-
-#     for part in parts:
-#         if part.startswith('<') and part.endswith('>'):
-#             # It's an HTML tag, leave it untouched
-#             result.append(part)
-#         else:
-#             # It's text content — clean it
-#             cleaned_text = ' '.join(part.split())  # remove extra whitespace
-#             result.append(cleaned_text)
-
-#     return ''.join(result)
-
-# def clean_html(html):
-#     # Split the HTML into tags and non-tag (text) parts
-#     parts = re.split(r'(<[^>]+>)', html)  # split on tags
-
-#     cleaned_parts = []
-#     for part in parts:
-#         if part.startswith('<') and part.endswith('>'):
-#             # It's an HTML tag — leave it untouched
-#             cleaned_parts.append(part)
-#         else:
-#             # It's text between tags — remove all whitespace characters
-#             cleaned_text = re.sub(r'\s+', '', part)
-#             cleaned_parts.append(cleaned_text)
-
-#     return ''.join(cleaned_parts)
-
 def clean_html(html):
     # Match tags vs text
     parts = re.split(r'(<[^<>]+?>)', html)  # safe tag match
@@ -166,10 +116,11 @@ def clean_html(html):
     return ''.join(cleaned_parts)
 
 
-# MAIN
-url = input("Enter URL:").strip()
-if not url.startswith(("http://", "https://")):
-    url = "https://" + url
+# Usage:
+url = input("Enter URL: ").strip()
+url = normalize_url(url)
+# print(f"Normalized URL: {url}")
+
 
 fetches = [fetch_html(url) for _ in range(5)]
 fetches = [f for f in fetches if f]
@@ -180,8 +131,6 @@ else:
     stable_html = find_stable_html_block(fetches)
     if stable_html:
         print("\n=== Extracted Stable HTML ===\n")
-        # print(stable_html)
-        # insert_into_text_match(mydb.cursor(), url, stable_html)
         cleaned_html = clean_html(stable_html)
         print(cleaned_html)
         insert_into_text_match(mydb.cursor(), url, cleaned_html)
