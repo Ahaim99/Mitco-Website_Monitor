@@ -4,9 +4,12 @@ use warnings;
 use DBI;
 use LWP::UserAgent;
 use Encode;
+use Mail::Sendmail;
 
 my $Conn;
 my %attr;
+# Email variables
+my $Mailfrom = 'ali.hamza@mitco.pk';
 
 # Create UserAgent object
 my $ua = LWP::UserAgent->new();
@@ -27,7 +30,7 @@ if (!($Conn = DBI->connect("DBI:mysql:$DB;mysql_compression=1", $dbUser, $dbPass
 }
 
 # Fetch active monitored sites
-my $Sql = "SELECT ms_id, url, text_match, match_type, cookies, headers FROM monitored_sites WHERE status = 'active'";
+my $Sql = "SELECT ms_id, url, alert_email, text_match, match_type, cookies, headers FROM monitored_sites WHERE status = 'active'";
 my $ref = $Conn->selectall_arrayref($Sql, { Slice => {} });
 
 my $status = 0;
@@ -38,7 +41,7 @@ my $isFirstWorking = 1;  # Flag to track the first working URL
 
 foreach (@$ref) {
     # Assign Variable from loop values
-    my ($ms_id, $url, $text_match, $match_type, $cookies, $headers) = @{$_}{qw(ms_id url text_match match_type cookies headers)};
+    my ($ms_id, $url, $alert_email, $text_match, $match_type, $cookies, $headers) = @{$_}{qw(ms_id url alert_email text_match match_type cookies headers)};
 
     # Set request headers if available
     my $req = HTTP::Request->new(GET => $url);
@@ -96,7 +99,35 @@ foreach (@$ref) {
             my $statement = "UPDATE monitored_sites SET status = 'inactive', last_result = 'Match not found', last_check_datetime = NOW(), response_time = ? WHERE ms_id = ?";
             my $rv = $Conn->do($statement, undef, $response->header('Client-Response-Time') || 0, $ms_id);
             $DBI::err && die $DBI::errstr;
-        }z
+
+            # Email alert
+
+            # Details for email
+            my $to = $alert_email;
+            my $from = $Mailfrom;
+            my $subject = 'Website Monitoring Alert';
+            # my $message = 'Your Website goes Down!! <br> URL: ' . $url . '<br> Response: ' . $response->status_line . '<br> Time: ' . localtime() . '<br>';
+            my $message = 'Your Website goes Down!!';
+
+            open(MAIL, "|/usr/sbin/sendmail -t");
+
+            # Email Header
+            print MAIL "To: $to\n";
+            print MAIL "From: $from\n";
+            print MAIL "Subject: $subject\n\n";
+
+            # Email Body
+            print MAIL $message;
+
+            my $result = close(MAIL);
+            if($result) { 
+                print "Email Sent, Bro!\n";
+            } 
+            else{ 
+                print "There was a problem, Bro!\n";
+            }
+            # End of email alert
+        }
     } else {
         # For Nagios Alert (Error URLs)
         $status++;

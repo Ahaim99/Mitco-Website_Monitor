@@ -40,6 +40,7 @@ def fetch_html(url):
         print(f"Error fetching {url}: {e}")
         return None
 
+# Extract meaningful blocks (div, nav, section, etc.) with visible content
 def extract_meaningful_blocks(html_text):
     tags_of_interest = ["div", "section", "nav", "footer", "ul"]
     candidates = []
@@ -127,6 +128,7 @@ if len(fetches) < 2:
     print("Not enough successful fetches.")
 else:
     stable_html = find_stable_html_block(fetches)
+    
     if stable_html:
         print("\n=== Extracted Stable HTML ===\n")
         cleaned_html = clean_html(stable_html)
