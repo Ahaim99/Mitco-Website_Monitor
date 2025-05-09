@@ -4,10 +4,14 @@ use warnings;
 use DBI;
 use LWP::UserAgent;
 use Encode;
-use Mail::Sendmail;
+use Net::SMTP::SSL;
+# use Net::SMTP;
+use MIME::Lite;
 
+# Database variables
 my $Conn;
 my %attr;
+
 # Email variables
 my $Mailfrom = 'ali.hamza@mitco.pk';
 
@@ -102,30 +106,28 @@ foreach (@$ref) {
 
             # Email alert
 
-            # Details for email
-            my $to = $alert_email;
-            my $from = $Mailfrom;
-            my $subject = 'Website Monitoring Alert';
-            # my $message = 'Your Website goes Down!! <br> URL: ' . $url . '<br> Response: ' . $response->status_line . '<br> Time: ' . localtime() . '<br>';
-            my $message = 'Your Website goes Down!!';
+            # Replace the entire email section with this improved version:
+            my $smtp = Net::SMTP::SSL->new(
+                'webhost-1.xs.net.pk',
+                Port => 465,
+                Timeout => 30,
+                Debug => 0,  # Set to 1 for troubleshooting
+            ) or die "Failed to connect to SMTP server: $!";
 
-            open(MAIL, "|/usr/sbin/sendmail -t");
+            $smtp->auth('ali.hamza@mitco.pk', '0lJ^3o11x') or die "Auth failed: $!";
+            $smtp->mail('ali.hamza@mitco.pk');
+            $smtp->to($alert_email);
+            $smtp->data();
+            $smtp->datasend("From: Website Monitor <$Mailfrom>\n");
+            $smtp->datasend("To: $alert_email\n");
+            $smtp->datasend("Subject: Website Monitoring Alert\n");
+            $smtp->datasend("Content-Type: text/plain; charset=UTF-8\n\n");
+            $smtp->datasend("ALERT: Website check failed for $url\n");
+            $smtp->datasend("Status: Match not found for text: $text_match\n");
+            $smtp->datasend("Time: ".localtime()."\n");
+            $smtp->dataend();
+            $smtp->quit;
 
-            # Email Header
-            print MAIL "To: $to\n";
-            print MAIL "From: $from\n";
-            print MAIL "Subject: $subject\n\n";
-
-            # Email Body
-            print MAIL $message;
-
-            my $result = close(MAIL);
-            if($result) { 
-                print "Email Sent, Bro!\n";
-            } 
-            else{ 
-                print "There was a problem, Bro!\n";
-            }
             # End of email alert
         }
     } else {
