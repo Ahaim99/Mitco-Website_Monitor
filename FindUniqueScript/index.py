@@ -117,9 +117,20 @@ def insert_into_text_match(cursor, url, text_match):
 
     mydb.commit()
 
-# MAIN
+# Main Structure
+
+# Input URL
 url = input("Enter URL: ").strip()
 url = normalize_url(url)
+
+# Take Email Input
+email = input("Enter email: ").strip()
+# if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+    # print("Invalid email format.")
+#     exit(1)
+
+exit(1)
+print("Invalid email format.")
 
 fetches = [fetch_html(url) for _ in range(5)]
 fetches = [f for f in fetches if f]

@@ -5,11 +5,15 @@ use DBI;
 use LWP::UserAgent;
 use Encode;
 use Net::SMTP::SSL;
-# use Net::SMTP;
+use Net::SMTP;
 use MIME::Lite;
 
+# Database variables
 my $Conn;
 my %attr;
+
+# Email variables
+my $Mailfrom = 'ali.hamza@mitco.pk';
 
 # Create UserAgent object
 my $ua = LWP::UserAgent->new();
@@ -30,7 +34,7 @@ if (!($Conn = DBI->connect("DBI:mysql:$DB;mysql_compression=1", $dbUser, $dbPass
 }
 
 # Fetch active monitored sites
-my $Sql = "SELECT ms_id, url, text_match, match_type, cookies, headers FROM monitored_sites WHERE status = 'active'";
+my $Sql = "SELECT ms_id, url, alert_email, text_match, match_type, cookies, headers FROM monitored_sites WHERE status = 'active'";
 my $ref = $Conn->selectall_arrayref($Sql, { Slice => {} });
 
 my $status = 0;
@@ -41,7 +45,7 @@ my $isFirstWorking = 1;  # Flag to track the first working URL
 
 foreach (@$ref) {
     # Assign Variable from loop values
-    my ($ms_id, $url, $text_match, $match_type, $cookies, $headers) = @{$_}{qw(ms_id url text_match match_type cookies headers)};
+    my ($ms_id, $url, $alert_email, $text_match, $match_type, $cookies, $headers) = @{$_}{qw(ms_id url alert_email text_match match_type cookies headers)};
 
     # Set request headers if available
     my $req = HTTP::Request->new(GET => $url);
@@ -99,7 +103,32 @@ foreach (@$ref) {
             my $statement = "UPDATE monitored_sites SET status = 'inactive', last_result = 'Match not found', last_check_datetime = NOW(), response_time = ? WHERE ms_id = ?";
             my $rv = $Conn->do($statement, undef, $response->header('Client-Response-Time') || 0, $ms_id);
             $DBI::err && die $DBI::errstr;
-        }z
+
+            # Email alert
+            
+            my $smtp = Net::SMTP::SSL->new(
+                'webhost-1.xs.net.pk',
+                Port => 465,
+                Timeout => 30,
+                Debug => 0,  # Set to 1 for troubleshooting
+            ) or die "Failed to connect to SMTP server: $!";
+
+            $smtp->auth('ali.hamza@mitco.pk', '0lJ^3o11x') or die "Auth failed: $!";
+            $smtp->mail('ali.hamza@mitco.pk');
+            $smtp->to($alert_email);
+            $smtp->data();
+            $smtp->datasend("From: Website Monitor <$Mailfrom>\n");
+            $smtp->datasend("To: $alert_email\n");
+            $smtp->datasend("Subject: Website Monitoring Alert\n");
+            $smtp->datasend("Content-Type: text/plain; charset=UTF-8\n\n");
+            $smtp->datasend("ALERT: Website check failed for $url\n");
+            $smtp->datasend("Status: Match not found for text: $text_match\n");
+            $smtp->datasend("Time: ".localtime()."\n");
+            $smtp->dataend();
+            $smtp->quit;
+
+            # End of email alert
+        }
     } else {
         # For Nagios Alert (Error URLs)
         $status++;

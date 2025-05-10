@@ -5,7 +5,7 @@ use DBI;
 use LWP::UserAgent;
 use Encode;
 use Net::SMTP::SSL;
-# use Net::SMTP;
+use Net::SMTP;
 use MIME::Lite;
 
 # Database variables
@@ -105,8 +105,7 @@ foreach (@$ref) {
             $DBI::err && die $DBI::errstr;
 
             # Email alert
-
-            # Replace the entire email section with this improved version:
+            
             my $smtp = Net::SMTP::SSL->new(
                 'webhost-1.xs.net.pk',
                 Port => 465,
