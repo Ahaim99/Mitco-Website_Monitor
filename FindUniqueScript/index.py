@@ -95,42 +95,50 @@ def clean_html(html):
     return ''.join(cleaned_parts)
 
 # Insert into database
-def insert_into_text_match(cursor, url, text_match):
+def insert_into_text_match(cursor, url, text_match, alert_email):
     now = datetime.now()
     cursor.execute("SELECT COUNT(*) FROM monitored_sites WHERE url = %s", (url,))
     (count,) = cursor.fetchone()
 
     if count > 0:
-        query = """
-        UPDATE monitored_sites
-        SET text_match = %s,
-            updated_at = %s
-        WHERE url = %s
-        """
-        cursor.execute(query, (text_match, now, now, url))
+        # Prompt the user for confirmation
+        user_input = input("This record already exists in the database. Do you want to update it? (Y/n): ").strip().lower()
+        
+        if user_input == 'y':
+            query = """
+            UPDATE monitored_sites
+            SET text_match = %s,
+                alert_email = %s,
+                updated_at = %s
+            WHERE url = %s
+            """
+            cursor.execute(query, (text_match, alert_email, now, url))
+            print("Record updated successfully.")
+        else:
+            print("No changes made to the existing record.")
+            return  # Exit the function without updating
     else:
+        # Insert new record
         query = """
-        INSERT INTO monitored_sites (url, text_match, created_at, updated_at)
+        INSERT INTO monitored_sites (url, alert_email, text_match, created_at, updated_at)
         VALUES (%s, %s, %s, %s, %s)
         """
-        cursor.execute(query, (url, text_match, now, now))
+        cursor.execute(query, (url, alert_email, text_match, now, now))
+        print("New record inserted successfully.")
 
     mydb.commit()
 
 # Main Structure
 
 # Input URL
-url = input("Enter URL: ").strip()
+url = input("Enter URL: ").replace(" ", "")
 url = normalize_url(url)
 
 # Take Email Input
-email = input("Enter email: ").strip()
-# if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
-    # print("Invalid email format.")
-#     exit(1)
-
-exit(1)
-print("Invalid email format.")
+email = input("Enter email: ").replace(" ", "")
+if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+    print("Invalid email format.")
+    exit(1)
 
 fetches = [fetch_html(url) for _ in range(5)]
 fetches = [f for f in fetches if f]
@@ -141,10 +149,10 @@ else:
     stable_html = find_stable_html_block(fetches)
     
     if stable_html:
-        print("\n=== Extracted Stable HTML ===\n")
         cleaned_html = clean_html(stable_html)
-        print(cleaned_html)
-        insert_into_text_match(mydb.cursor(), url, cleaned_html)
+        print("\n=== Extracted Stable HTML ===\n")
+        print(cleaned_html + "\n\n\n")
+        insert_into_text_match(mydb.cursor(), url, cleaned_html, email)
     else:
         print("No stable, visible content block found.")
 
