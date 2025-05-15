@@ -120,11 +120,39 @@ foreach (@$ref) {
             $smtp->datasend("From: Website Monitor <$Mailfrom>\n");
             $smtp->datasend("To: $alert_email\n");
             $smtp->datasend("Subject: Website Monitoring Alert\n");
-            $smtp->datasend("Content-Type: text/plain; charset=UTF-8\n\n");
+            $smtp->datasend("MIME-Version: 1.0\n");
+            $smtp->datasend("Content-Type: text/html; charset=UTF-8\n\n");
             # Email body
-            $smtp->datasend("ALERT: Website check failed for $url\n");
-            $smtp->datasend("Status: Match not found for text: $text_match\n");
-            $smtp->datasend("Time: ".localtime()."\n");
+            # $smtp->datasend("ALERT: Website check failed for $url\n");
+            # $smtp->datasend("Status: Match not found for text: $text_match\n");
+            # $smtp->datasend("Time: ".localtime()."\n");
+            
+            $smtp->datasend(qq{
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; }
+                        .alert { color: #d9534f; font-weight: bold; }
+                        .details { background: #f9f9f9; padding: 15px; border-left: 4px solid #d9534f; }
+                        .footer { margin-top: 20px; font-size: 0.9em; color: #777; }
+                    </style>
+                </head>
+                <body>
+                    <h2 class="alert">Website Monitoring Alert</h2>
+                    <div class="details">
+                        <p><strong>URL:</strong> $url</p>
+                        <p><strong>Status:</strong> Match not found for text: <code>$text_match</code></p>
+                        <p><strong>Match Type:</strong> $match_type</p>
+                        <p><strong>Time:</strong> }.localtime().qq{</p>
+                    </div>
+                    <div class="footer">
+                        <p>This is an automated message from your website monitoring system.</p>
+                    </div>
+                </body>
+                </html>
+            });
+            
             $smtp->dataend();
             $smtp->quit;
 

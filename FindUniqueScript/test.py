@@ -1,8 +1,10 @@
+from urllib.parse import urlparse, urlunparse
 import requests
 import difflib
 import mysql.connector
 from datetime import datetime
 from bs4 import BeautifulSoup
+import re
 
 # Database Connection
 mydb = mysql.connector.connect(
@@ -12,105 +14,150 @@ mydb = mysql.connector.connect(
     database="website_monitoring"
 )
 
-# Fetch HTML from URL
+# Normalize URL
+def normalize_url(url):
+    url = url.strip()
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    parsed = urlparse(url)
+    scheme = parsed.scheme
+    netloc = parsed.netloc
+    path = parsed.path.rstrip('/')  # remove trailing slash
+    normalized_url = urlunparse((scheme, netloc, path, '', '', ''))
+    return normalized_url
+
+# Fetch HTML
 def fetch_html(url):
+    headers = {
+        "User-Agent": "MyCustomUserAgent/1.0"
+    }
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=10, headers=headers, allow_redirects=True)
         response.raise_for_status()
-        return response.content  # Return raw bytes
+        return response.text  # Raw HTML
     except requests.RequestException as e:
         print(f"Error fetching {url}: {e}")
         return None
 
-# Divide byte content into windows from the bottom up
-def get_byte_windows(content_bytes, window_size=500):
-    return [content_bytes[i:i+window_size] for i in range(len(content_bytes)-window_size, -1, -window_size)]
+# Extract meaningful blocks (div, nav, section, etc.) with visible content
+def extract_meaningful_blocks(html_text):
+    tags_of_interest = ["div", "section", "nav", "footer", "ul"]
+    candidates = []
 
-# Compare byte windows across multiple versions and find most stable block
-def find_stable_footer_window(byte_fetches, window_size=500):
-    num_versions = len(byte_fetches)
-    if num_versions < 2:
+    # Combine all target tags into one regex group
+    tag_pattern = '|'.join(tags_of_interest)
+
+    # Regex to capture opening and closing blocks (very basic, non-nested)
+    pattern = re.compile(
+        rf'<({tag_pattern})([^>]*)>(.*?)</\1>',
+        re.DOTALL | re.IGNORECASE
+    )
+
+    for match in pattern.finditer(html_text):
+        full_block = match.group(0)
+        inner_text = re.sub(r'<[^>]+>', '', match.group(3))  # Strip tags for length check
+
+        if len(inner_text.strip()) > 50 and len(full_block.strip()) > 200:
+            candidates.append(full_block.strip())
+
+    return candidates
+
+# Find most stable block
+def find_stable_html_block(html_versions):
+    all_candidates = [extract_meaningful_blocks(html) for html in html_versions]
+    if not all(all_candidates):
         return None
 
-    # Divide each fetch into windows
-    fetch_windows = [get_byte_windows(fetch, window_size) for fetch in byte_fetches]
-    min_windows = min(len(windows) for windows in fetch_windows)
-
+    min_len = min(len(c) for c in all_candidates)
     stability_scores = []
-    for i in range(min_windows):
-        block_versions = [fetch_windows[j][i] for j in range(num_versions)]
-        # Score: how similar all blocks are across fetches
-        diffs = [difflib.SequenceMatcher(None, block_versions[0], bv).ratio() for bv in block_versions[1:]]
+
+    for i in range(min_len):
+        versions = [candidates[i] for candidates in all_candidates]
+        diffs = [difflib.SequenceMatcher(None, versions[0], v).ratio() for v in versions[1:]]
         avg_score = sum(diffs) / len(diffs)
-        stability_scores.append((avg_score, i))
+        stability_scores.append((avg_score, i, versions[0]))
 
-    # Highest similarity = most stable
     stability_scores.sort(reverse=True)
-    best_score, best_index = stability_scores[0]
-    print(f"Most stable window at index {best_index}, score: {best_score:.3f}")
+    best_score, best_index, best_html = stability_scores[0]
+    print(f"Most stable semantic block at index {best_index}, score: {best_score:.3f}")
+    return best_html if best_score > 0.90 else None
 
-    # Return best stable window as bytes
-    return fetch_windows[0][best_index] if best_score > 0.90 else None
+# Clean HTML without altering tag formatting
+def clean_html(html):
+    parts = re.split(r'(<[^<>]+?>)', html)
+    cleaned_parts = []
+    for part in parts:
+        if part.startswith('<') and part.endswith('>'):
+            cleaned_parts.append(part)  # preserve tag
+        else:
+            cleaned_parts.append(re.sub(r'\s+', '', part))  # strip text content
+    return ''.join(cleaned_parts)
 
-# Convert byte block to text and parse
-def decode_and_pretty_print(html_bytes):
-    try:
-        html_text = html_bytes.decode("utf-8", errors="ignore")
-        soup = BeautifulSoup(html_text, "html.parser")
-        print("\n=== Extracted Footer Candidate ===\n")
-        print(soup.prettify())
-        return soup
-    except Exception as e:
-        print(f"Decoding error: {e}")
-        return None
-
-# Insert or update text match in the database
-def insert_into_text_match(cursor, url, text_match):
+# Insert into database
+def insert_into_text_match(cursor, description, url, alert_email, text_match):
     now = datetime.now()
-
-    # Check if URL exists
     cursor.execute("SELECT COUNT(*) FROM monitored_sites WHERE url = %s", (url,))
     (count,) = cursor.fetchone()
 
     if count > 0:
-        # Update existing
-        query = """
-        UPDATE monitored_sites
-        SET text_match = %s,
-            last_check_datetime = %s,
-            updated_at = %s
-        WHERE url = %s
-        """
-        cursor.execute(query, (text_match, now, now, url))
+        # Prompt the user for confirmation
+        user_input = input("This record already exists in the database. Do you want to update it? (Y/n): ").strip().lower()
+        
+        if user_input == 'y':
+            query = """
+            UPDATE monitored_sites
+            SET description = %s,
+                alert_email = %s,
+                text_match = %s,
+                updated_at = %s
+            WHERE url = %s
+            """
+            cursor.execute(query, (description, alert_email, text_match, now, url))
+            print("Record updated successfully.")
+        else:
+            print("No changes made to the existing record.")
+            return  # Exit the function without updating
     else:
-        # Insert new
+        # Insert new record
         query = """
-        INSERT INTO monitored_sites (url, text_match, last_check_datetime, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO monitored_sites (description, url, alert_email, text_match, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(query, (url, text_match, now, now, now))
+        cursor.execute(query, (description, url, alert_email, text_match, now, now))
+        print("New record inserted successfully.")
 
     mydb.commit()
 
-# MAIN
-url = input("Enter URL:").replace(" ", "")
-if not url.startswith(("http://", "https://")):
-    url = "https://" + url
+# Main Structure
 
-# Fetch site multiple times
+# Input URL
+url = input("Enter URL: ").replace(" ", "")
+url = normalize_url(url)
+
+# Input Description
+description = input("Enter description: ").strip()
+
+# Take Email Input
+email = input("Enter email: ").replace(" ", "")
+if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+    print("Invalid email format.")
+    exit(1)
+
 fetches = [fetch_html(url) for _ in range(5)]
 fetches = [f for f in fetches if f]
-
 
 if len(fetches) < 2:
     print("Not enough successful fetches.")
 else:
-    stable_footer_bytes = find_stable_footer_window(fetches)
-    if stable_footer_bytes:
-        content = decode_and_pretty_print(stable_footer_bytes)
-        insert_into_text_match(mydb.cursor(), url, content.prettify() if content else "")
+    stable_html = find_stable_html_block(fetches)
+    
+    if stable_html:
+        cleaned_html = clean_html(stable_html)
+        print("\n=== Extracted Stable HTML ===\n")
+        print(cleaned_html + "\n\n\n")
+        insert_into_text_match(mydb.cursor(), description, url, email, cleaned_html)
     else:
-        print("No stable footer-like region found.")
-
+        print("No stable, visible content block found.")
 
 mydb.close()

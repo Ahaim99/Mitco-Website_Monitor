@@ -95,7 +95,7 @@ def clean_html(html):
     return ''.join(cleaned_parts)
 
 # Insert into database
-def insert_into_text_match(cursor, url, text_match, alert_email):
+def insert_into_text_match(cursor, description, url, alert_email, text_match):
     now = datetime.now()
     cursor.execute("SELECT COUNT(*) FROM monitored_sites WHERE url = %s", (url,))
     (count,) = cursor.fetchone()
@@ -107,12 +107,13 @@ def insert_into_text_match(cursor, url, text_match, alert_email):
         if user_input == 'y':
             query = """
             UPDATE monitored_sites
-            SET text_match = %s,
+            SET description = %s,
                 alert_email = %s,
+                text_match = %s,
                 updated_at = %s
             WHERE url = %s
             """
-            cursor.execute(query, (text_match, alert_email, now, url))
+            cursor.execute(query, (description, alert_email, text_match, now, url))
             print("Record updated successfully.")
         else:
             print("No changes made to the existing record.")
@@ -120,10 +121,10 @@ def insert_into_text_match(cursor, url, text_match, alert_email):
     else:
         # Insert new record
         query = """
-        INSERT INTO monitored_sites (url, alert_email, text_match, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO monitored_sites (description, url, alert_email, text_match, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(query, (url, alert_email, text_match, now, now))
+        cursor.execute(query, (description, url, alert_email, text_match, now, now))
         print("New record inserted successfully.")
 
     mydb.commit()
@@ -133,6 +134,9 @@ def insert_into_text_match(cursor, url, text_match, alert_email):
 # Input URL
 url = input("Enter URL: ").replace(" ", "")
 url = normalize_url(url)
+
+# Input Description
+description = input("Enter description: ").strip()
 
 # Take Email Input
 email = input("Enter email: ").replace(" ", "")
@@ -152,7 +156,7 @@ else:
         cleaned_html = clean_html(stable_html)
         print("\n=== Extracted Stable HTML ===\n")
         print(cleaned_html + "\n\n\n")
-        insert_into_text_match(mydb.cursor(), url, cleaned_html, email)
+        insert_into_text_match(mydb.cursor(), description, url, email, cleaned_html)
     else:
         print("No stable, visible content block found.")
 
