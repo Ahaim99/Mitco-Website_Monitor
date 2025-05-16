@@ -110,10 +110,11 @@ def insert_into_text_match(cursor, description, url, alert_email, text_match):
             SET description = %s,
                 alert_email = %s,
                 text_match = %s,
+                status = %s,
                 updated_at = %s
             WHERE url = %s
             """
-            cursor.execute(query, (description, alert_email, text_match, now, url))
+            cursor.execute(query, (description, alert_email, text_match, 'active', now, url))
             print("Record updated successfully.")
         else:
             print("No changes made to the existing record.")
@@ -121,10 +122,10 @@ def insert_into_text_match(cursor, description, url, alert_email, text_match):
     else:
         # Insert new record
         query = """
-        INSERT INTO monitored_sites (description, url, alert_email, text_match, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s)
+        INSERT INTO monitored_sites (description, url, alert_email, text_match, status, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(query, (description, url, alert_email, text_match, now, now))
+        cursor.execute(query, (description, url, alert_email, text_match, 'active', now, now))
         print("New record inserted successfully.")
 
     mydb.commit()

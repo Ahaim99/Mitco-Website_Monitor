@@ -142,12 +142,12 @@ foreach (@$ref) {
                     <h2 class="alert">Website Monitoring Alert</h2>
                     <div class="details">
                         <p><strong>URL:</strong> $url</p>
-                        <p><strong>Status:</strong> Match not found for text: <code>$text_match</code></p>
+                        <p><strong>Status:</strong> Match not found, Site faces issues.</p>
                         <p><strong>Match Type:</strong> $match_type</p>
                         <p><strong>Time:</strong> }.localtime().qq{</p>
                     </div>
                     <div class="footer">
-                        <p>This is an automated message from your website monitoring system.</p>
+                        <p>This is an automated message from Website Monitoring System.</p>
                     </div>
                 </body>
                 </html>
